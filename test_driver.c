@@ -9,6 +9,9 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 
+//#include <linux/kernel.h>
+//#include <linux/proc_fs.h>
+
 #define	MAJORS	200		//主设备号
 #define	MY_MINOR	0		//次设备号基址
 #define	MY_MINORS_ALLOMAX		1		//从设备的个数
@@ -17,6 +20,7 @@
 
 static struct class *chrdev_class;
 struct chrdev_devices{
+	char val;
 	struct cdev my_cdev;
 };
 struct chrdev_devices *roger_dev;
@@ -26,30 +30,43 @@ struct chrdev_devices *roger_dev;
 // 在proe函数里需要调用 sysfs_create_file 函数才会生成对应的文件。
 //static DEVICE_ATTR(roger, 0660, roger_show, roger_store);
 
-static int chrdev_open(struct inode *inode, struct file *file)
-{
-	printk(KERN_INFO "chrdev_open test.\n");
+static int chrdev_open(struct inode *node, struct file *filp)
+{	
+	//获取到当前自定义结构体变量，保存至file中，以便其他函数方便访问
+   	struct chrdev_devices *n_cdev = container_of(node->i_cdev,struct chrdev_devices,my_cdev);
+    	filp->private_data = n_cdev;
+	printk("This is a test/n");
 	return 0;
 }
 
-static ssize_t chrdev_read(struct file *file, char __user *buf, size_t count, loff_t *offset)
+static ssize_t chrdev_read(struct file *filp, char __user *buf, size_t count, loff_t *offset)
 {
-
-	printk(KERN_INFO "chrdev_read test.\n");
-	
-	return 0;
+	struct chrdev_devices *n_cdev = (struct chrdev_devices *)filp->private_data;
+	int err;
+   	printk("test2 read %c  count : %d",n_cdev->val, sizeof(n_cdev->val));
+    	if(copy_to_user(buf,&n_cdev->val, sizeof(n_cdev->val))){
+        	err = -EFAULT;
+        	return err;
+    	}
+    	return sizeof(n_cdev->val);
 }
 
-static ssize_t chrdev_write(struct file *file, const char __user *buf, size_t count, loff_t *offset)
-{
-	printk(KERN_INFO "chrdev_write test.\n");
-
-	return 0;
+static ssize_t chrdev_write(struct file *filp, const char __user *buf, size_t count, loff_t *offset)
+{	
+	struct chrdev_devices *n_cdev = (struct chrdev_devices *)filp->private_data;
+	int err;
+    	//printk("test2 write %s  count : %d",(*buf),count); //调用这个函数会死机,应该是*buf是空指针的问题
+   	 if(copy_from_user(&n_cdev->val,buf,count)){
+        	err = -EFAULT;
+       	 	return err;
+    	}
+    	return sizeof(n_cdev->val);
 }
 
-int chrdev_release(struct inode *inode, struct file *file)
+int chrdev_release(struct inode *node, struct file *filp)
 {
-	printk(KERN_INFO "chrdev_release test.\n");
+	//printk("This is a test/n");
+	filp->private_data = NULL;
 	return 0;
 }
 
@@ -116,8 +133,6 @@ static int chrdev_probe(struct platform_device *pdev)
 	printk(KERN_INFO "chrdev init success.\n");
 	return 0;
 	
-/*out_unreg_device:
-	device_destroy(chrdev_class, MKDEV(MAJORS, MY_MINOR));*/
 out_unreg_class:
 	class_destroy(chrdev_class);
 out_unreg_cdev_add:
